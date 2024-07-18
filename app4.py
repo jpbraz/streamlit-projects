@@ -24,7 +24,7 @@ if file_b:
     st.dataframe(df_b_preview)
     start_row_b = st.sidebar.number_input("Informe o número da linha com o CABEÇALHO dos dados da Planilha B:", min_value=0, value=10)
     start_row_b += 1
-
+st.markdown("""---""")
 
 if file_a and file_b:
     st.empty()
@@ -32,28 +32,24 @@ if file_a and file_b:
     df_a = pd.read_excel(file_a, skiprows=start_row_a)
     df_b = pd.read_excel(file_b, skiprows=start_row_b)
 
-    # remover as 2 primeiras linhas do df_a
-    df_a_preview = df_a_preview.iloc[int(start_row_a):]
-    st.write("Pré-visualização das linhas da Planilha A após seleção da linha inicial:")
-    st.dataframe(df_a_preview)
+    df_a = df_a[df_a.columns.drop(list(df_a.filter(regex='^Unnamed')))]
+    df_a.dropna(axis=0, thresh=2, inplace=True) # thresh=3 # mantem apenas no minimo 3 valores não nulos (non-NA), # how='any', 
+    df_b = df_b[df_b.columns.drop(list(df_b.filter(regex='^Unnamed')))]
+    df_b.dropna(inplace=True)
 
-    # remover as 10 primeiras linhas do df_b
-    df_b_preview = df_b_preview.iloc[int(start_row_b):]
+    # mostrar planilhas pré-tratadas
+    st.write("Pré-visualização das linhas da Planilha A após seleção da linha inicial:")
+    st.dataframe(df_a)
+
     st.write("Pré-visualização das linhas da Planilha B após seleção da linha inicial:")
-    st.dataframe(df_b_preview)
+    st.dataframe(df_b)
 
     # Seleção das colunas relevantes
     colunas_a = st.sidebar.multiselect("Selecione as colunas da Planilha A", df_a.columns.tolist())
     colunas_b = st.sidebar.multiselect("Selecione as colunas da Planilha B", df_b.columns.tolist())
     
     
-    if colunas_a and colunas_b:
-        print(colunas_a)
-
-        # Remover colunas não selecionadas
-        #df_a.drop(df_a.columns.intersection([colunas_a]), axis=1, inplace=True)
-        #df_b.drop(df_b.columns.intersection([colunas_b]), axis=1, inplace=True)
-        
+    if colunas_a and colunas_b:        
         # Dataframe apenas com as colunas selecionadas
         df_a = df_a[df_a.columns.intersection(colunas_a)]
         df_b = df_b[df_b.columns.intersection(colunas_b)]
@@ -62,9 +58,9 @@ if file_a and file_b:
         df_a.dropna(axis=0, thresh=3, inplace=True) # thresh=3 # mantem apenas no minimo 3 valores não nulos (non-NA), # how='any', 
         df_b.dropna(inplace=True)
 
-        st.write("Colunas selecionadas para análise:")
-        st.write(f"Planilha A: {colunas_a}")
-        st.write(f"Planilha B: {colunas_b}")
+        # st.write("Colunas selecionadas para análise:")
+        # st.write(f"Planilha A: {colunas_a}")
+        # st.write(f"Planilha B: {colunas_b}")
 
         # Comparação das colunas selecionadas
         datetime_a = st.sidebar.selectbox("Selecione a coluna de datetime na Planilha A:", colunas_a, index=1)
@@ -72,6 +68,7 @@ if file_a and file_b:
         time_b = st.sidebar.selectbox("Selecione a coluna de time na Planilha B:", colunas_b, index=4)
         valor_a = st.sidebar.selectbox("Selecione a coluna de valor na Planilha A:", colunas_a)
         valor_b = st.sidebar.selectbox("Selecione a coluna de valor na Planilha B:", colunas_b)
+        identificador = st.sidebar.selectbox("Selecione a coluna de identificação do pagamento na Planilha B:", colunas_b)
 
 
         # transforma o tipo da coluna datetime_a em datetime
@@ -79,11 +76,11 @@ if file_a and file_b:
         # Combinar date e time na planilha B para criar a coluna datetime
         df_b['datetime_b'] = pd.to_datetime(df_b[date_b].astype(str) + ' ' + df_b[time_b].astype(str))
 
-
+        # criando coluna de checagem
         df_a['checked'] = False
         df_b['checked'] = False
 
-        # Definindo a condição de merge
+        # Definindo a condição de merge valor igual para horários próximos
         def merge_condition(row1, row2):
             time_diff = np.abs((row1[datetime_a] - row2['datetime_b']).total_seconds() / 60)
             value_diff = np.abs(row1[valor_a] - row2[valor_b])
@@ -93,57 +90,70 @@ if file_a and file_b:
             return time_diff <= 45 and value_diff == 0.0 and row1['checked'] == False and row2['checked'] == False
 
 
-        # Realizando o merge
-        merged_data = []
+        if st.sidebar.button('Processar'):
+            # Lista para armazenar os dados do merge
+            merged_data = []
 
-        for i, row1 in df_a.iterrows():
-            for j, row2 in df_b.iterrows():
-                if row2['checked'] == False:
-                  if merge_condition(row1, row2):
-                    # print(row1.values, row2.values)
-                    # Marcar a row2 como já verificada para evitar duplicidade
-                    df_b.loc[j, 'checked'] = True
-                    df_a.loc[i, 'checked'] = True
-                    # Criar uma nova coluna para marcar a relação entre as duas planilhas
-                    merged_row = row1.copy()
-                    #merged_row['check'] = True
+            # Realizando o merge
+            for i, row1 in df_a.iterrows():
+                for j, row2 in df_b.iterrows():
+                    if row2['checked'] == False:
+                        if merge_condition(row1, row2):
+                            # print(row1.values, row2.values)
+                            # Marcar a row2 como já verificada para evitar duplicidade
+                            df_b.loc[j, 'checked'] = True
+                            df_a.loc[i, 'Identificador'] = row2[identificador]
+                            df_a.loc[i, 'checked'] = True
+                            # Criar uma nova coluna para marcar a relação entre as duas planilhas
+                            merged_row = row1.copy()
+                            #merged_row['check'] = True
 
-                    for c in df_b.columns:
-                        merged_row[c] = row2[c]
-                    # merged_row['Pagador'] = row2['pagador']
-                    # merged_row['Valor'] = row2[valor_b]
-                    # merged_row['Data'] = row2['datetime_b']
+                            for c in df_b.columns:
+                                merged_row[c] = row2[c]
+                            # merged_row['Pagador'] = row2['pagador']
+                            # merged_row['Valor'] = row2[valor_b]
+                            # merged_row['Data'] = row2['datetime_b']
 
-                    # merged_row['Hora'] = row2['hora recebimento']
-                    merged_data.append(merged_row)
-                    break
+                            # merged_row['Hora'] = row2['hora recebimento']
+                            merged_data.append(merged_row)
+                            break
 
-        # Convertendo para dataframe final
-        merged_df = pd.DataFrame(merged_data)
+            # Convertendo para dataframe final
+            merged_df = pd.DataFrame(merged_data)
 
-        print(merged_df)
-        
-        # Mostrar DataFrame
-        st.write("Planilha A (Pagamentos Recebidos):")
-        st.dataframe(df_a)
-        st.write(f"Total: {len(df_a)}")
+            
+            # Mostrar DataFrame
+            st.markdown("""---""")
+            st.write("Planilha A (Pagamentos Recebidos):")
+            st.dataframe(df_a)
+            st.write(f"Total: {len(df_a)}")
 
-        st.write("Planilha B (Pagamentos Compensados):")
-        st.dataframe(df_b)
-        st.write(f"Total: {len(df_b)}")
+            st.write("Planilha B (Pagamentos Compensados):")
+            st.dataframe(df_b)
+            st.write(f"Total: {len(df_b)}")
 
-        st.write("MERGED:")
-        st.dataframe(merged_df)
+            st.markdown('''**:blue[Agrupado]:**''')
+            st.dataframe(merged_df)
 
-        pagamentos_efetivados = df_a[df_a['checked']]
-        pagamentos_nao_efetivados = df_a[~df_a['checked']]
+            pagamentos_efetivados = df_a[df_a['checked']]
+            pagamentos_nao_efetivados = df_a[~df_a['checked']]
 
-        # Exibir os resultados
-        st.write(f"Pagamentos Efetivados: {len(pagamentos_efetivados)}")
-        st.write(f"Pagamentos Não Efetivados: {len(pagamentos_nao_efetivados)}")
+            # Exibir os resultados
+            st.markdown("""---""")
+            st.write(f"Pagamentos Efetivados: {len(pagamentos_efetivados)}")
+            st.write(f"Pagamentos Não Efetivados: {len(pagamentos_nao_efetivados)}")
+            
+            st.markdown("""---""")
+            st.markdown('''**:red[Pagamentos Não Efetivados]** ( :blue[detalhes] ):
+                        ''')
+            st.dataframe(pagamentos_nao_efetivados)
 
-        st.write("Pagamentos Não Efetivados (Detalhes):")
-        st.dataframe(pagamentos_nao_efetivados)
+            st.markdown('''**:green[Pagamentos Efetivados]** ( :blue[detalhes] ):
+                        ''')
+            pagamentos_efetivados = pagamentos_efetivados[pagamentos_efetivados.columns.drop(['datetime_a'])]
+            st.dataframe(pagamentos_efetivados)
+            
+            st.balloons()
 
-        st.write("Pagamentos Efetivados (Detalhes):")
-        st.dataframe(pagamentos_efetivados)
+            # print(merged_df)
+            print(pagamentos_efetivados)
